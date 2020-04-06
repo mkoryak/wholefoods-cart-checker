@@ -1,0 +1,13 @@
+# No longer required, see readme for info.
+AMAZON_PASSWORD=your password goes here  
+
+# Also optional, it will use it if its here
+AMAZON_EMAIL=pooper@scooper.com
+
+# required
+YOUR_CELLPHONE=+15559991234
+
+# register for a 'sms' account to get this. 
+TWILIO_CLIENT_ID=ACad60bc8373882f885b42fd2b324
+TWILIO_AUTH_TOKEN=b2097a6d43b519cd792544f2248
+TWILIO_FROM=+12029523936
