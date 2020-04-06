@@ -61,7 +61,7 @@ async function check(page, browser) {
 
     let foundAvailability = false;
     let foundNothing = true;
-    ;
+
     const texts = await page.$$eval('.ufss-date-select-toggle-text-availability',
         nodes => nodes.map(n => n.innerText));
 
