@@ -237,8 +237,13 @@ async function dealWithShit() {
         await page.click('a[name="proceedToCheckout"]');
       } catch(e) {
         console.log('looks like we are not logged in...');
-        const button = await page.$('.action-button');
-        await page.click('.action-button');
+        try {
+          const button = await page.$('.action-button');
+          await page.click('.action-button');
+        } catch(e) {
+          console.log('cannot find a checkout/login button anywhere. You have nothing in your cart and I am leaving.');
+          process.exit(0);
+        }
       }
     } else if(title === "Your Amazon.com") {
       console.log('Saving your cookies to ./cookies.json');
