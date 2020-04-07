@@ -31,7 +31,11 @@ const checkoutWholefoods = true;
 // solve it and login manually. 
 const DEBUG_WITH_NON_HEADLESS = true;
 const SERVER_PORT = 3000;
+
 let localAddress = 'http://127.0.0.1:'+SERVER_PORT;
+
+// We will find a better url later as we click around. 
+let amazonUrl = 'https://www.amazon.com/gp/cart/view.html?ref_=nav_cart';
 
 if(AUTO_ORDER_IF_POSSIBLE) {
   console.log('AUTO_ORDER_IF_POSSIBLE = true !!!!');
@@ -65,7 +69,7 @@ function getLocalServerUrl(pathname='/') {
 
 async function testSms(){
  const screenshotPath = `/screenshots/test_sms_${moment().unix()}.png`;
-  await page.screenshot({path: '.'+screenshotPath});
+  await page.screenshot({path: '.'+screenshotPath, fullPage: true});
   await smsMsg('testing 1,2,3: '+getLocalServerUrl(screenshotPath));
 }
 
@@ -90,7 +94,7 @@ async function makeOrder(timeout=30000) {
     await page.waitForSelector('.place-your-order-button', {timeout});
     await page.click('.place-your-order-button');
     const screenshotPath = `/screenshots/after-order-placed_${moment().unix()}.png`;
-    await page.screenshot({path: '.'+screenshotPath});
+    await page.screenshot({path: '.'+screenshotPath, fullPage: true});
     await smsMsg(`Tried to place an order. See: ${getLocalServerUrl(screenshotPath)}`)
     return screenshotPath;
 }
@@ -168,6 +172,9 @@ async function dealWithShit() {
     const title = await page.title();
     console.log('Process page:', title);
     if(title === 'Substitution preferences' || title === "Before you checkout") {
+      if(title === 'Substitution preferences') {
+        amazonUrl = page.url();
+      }
       try {
         await page.waitForSelector('.a-button-input');
         await page.click('.a-button-input');
@@ -325,12 +332,15 @@ function renderError(res, e) {
 }
 
 app.get('/', async (req, res) => {
-  const encodedImg = await page.screenshot({encoding: 'base64'});
+  const encodedImg = await page.screenshot({encoding: 'base64', fullPage: true});
   res.setHeader('content-type', 'text/html');
   res.send(`<html><head><title>Using the blockchain for wholefoods deliveries!</title></head>
     <body>
-    <h1 style="display:${canMakeOrder ? 'block': 'none'};"><a href="/order" style="font-size: 34px; margin-bottom: 10px;">Place this order!<a> (wait up to a 2 minutes after clicking)</h1>
+    <h1 style="display:${canMakeOrder ? 'block': 'none'};"><a href="/order" style="font-size: 34px; margin-bottom: 10px; padding: 0 10px; color: green;">Place this order!<a> (wait up to a 1 minute after clicking)</h1>
     <h1><a href="/test-sms" style="font-size: 14px; margin-bottom: 10px;">Send a test SMS<a></h1>
+    <h1><a href="${amazonUrl}" style="font-size: 24px; margin-bottom: 10px;">Amazon Cart</a></h1>
+    <br/>
+    <b>Screenshot</b> of current state:<br/>
     <img src="data:image/png;base64, ${encodedImg}"></body></html>`);
 });
 app.get('/test-sms', async (req, res) => {
@@ -338,7 +348,7 @@ app.get('/test-sms', async (req, res) => {
     await testSms();
     res.send('it worked!');
   } catch(e) {
-    renderError(e);
+    renderError(res, e);
   }
 });
 
@@ -356,7 +366,7 @@ app.get('/order', async (req, res) => {
     const screenshotPath = await makeOrder();
     res.redirect('/order-placed');
   } catch(e) {
-    renderError(e);
+    renderError(res, e);
   }
 });
 app.use('/screenshots', express.static('screenshots'));
@@ -370,7 +380,7 @@ Object.keys(ifaces).forEach(function (ifname) {
     console.log(`Server started on ${localAddress}`);
   });
 });
-
+console.log('-------------------------------\n\n');
 
 app.listen(SERVER_PORT)
 
