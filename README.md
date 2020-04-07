@@ -20,13 +20,15 @@ I do not know if there will be another login prompt later when the program is ru
 Watch console.log when you first run it and it will tell you to login.
 
 # Checkout your cart faster
-It runs a server on localhost:3000 that will have a button where you can make it schedule a delivery if one is avilable. 
-Right now it wont fully work because I dont know the selector of the final checkout button :P
+Set `AUTO_ORDER_IF_POSSIBLE` to true in config. It will do it for you.
+
+Or
+
+This starts a server on localhost:3000 that will have a button that attempts to schedule a delivery. A link to this server will be texted to you if a delivery window is found.  
 
 # Which cart?
 
 By default this monitors wholefoods delivery windows. Change to amazon fresh by editing top of index.js `const checkoutWholefoods = true;`.
-
 
 # Run it
 
