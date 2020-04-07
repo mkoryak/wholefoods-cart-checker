@@ -26,6 +26,8 @@ Or
 
 This starts a server on localhost:3000 that will have a button that attempts to schedule a delivery. A link to this server will be texted to you if a delivery window is found.  
 
+![it works](https://github.com/mkoryak/wholefoods-cart-checker/raw/gh-pages/pics/screenshot.png)
+
 # Which cart?
 
 By default this monitors wholefoods delivery windows. Change to amazon fresh by editing top of index.js `const checkoutWholefoods = true;`.
