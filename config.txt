@@ -1,13 +1,20 @@
-# No longer required, see readme for info.
+# Optional: see readme for info.
 AMAZON_PASSWORD=your password goes here  
 
-# Also optional, it will use it if its here
+# Optional: it will use it if its here
 AMAZON_EMAIL=pooper@scooper.com
 
-# required
-YOUR_CELLPHONE=+15559991234
+# Required: Comma seperated list of phones to notify about a delivery window (ex: +15552221212,+19788771111)
+SMS_NOTIFY_LIST=+19785551212
 
-# register for a 'sms' account to get this. 
+# Required: register for a 'sms' account to get this. 
 TWILIO_CLIENT_ID=ACad60bc8373882f885b42fd2b324
 TWILIO_AUTH_TOKEN=b2097a6d43b519cd792544f2248
 TWILIO_FROM=+12029523936
+
+# Just go ahead and place an order if there is a delivery window:
+AUTO_ORDER_IF_POSSIBLE=false
+# How often to refresh the page with delivery windows:
+REFRESH_INTERVAL_SECONDS=87
+# How long to wait after finding a window before starting to check again:
+DELAY_AFTER_FINDING_SECONDS=600
