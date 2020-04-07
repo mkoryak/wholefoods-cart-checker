@@ -19,9 +19,10 @@ const AMAZON_EMAIL = process.env.AMAZON_EMAIL;
 const TWILIO_CLIENT_ID = process.env.TWILIO_CLIENT_ID; 
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 const TWILIO_FROM = process.env.TWILIO_FROM;
-const YOUR_CELLPHONE = process.env.YOUR_CELLPHONE;
-const REFRESH_INTERVAL_MINS = 1.5;
-const DELAY_AFTER_FINDING_MINS = 60; // Dont spam with sms after finding a window.
+const AUTO_ORDER_IF_POSSIBLE = process.env.AUTO_ORDER_IF_POSSIBLE == true;
+const SMS_NOTIFY_LIST = process.env.SMS_NOTIFY_LIST.split(',');
+const REFRESH_INTERVAL_SECONDS = parseInt(process.env.REFRESH_INTERVAL_SECONDS);
+const DELAY_AFTER_FINDING_SECONDS = parseInt(process.env.DELAY_AFTER_FINDING_SECONDS); // Dont spam with sms after finding a window.
 
 // If false, will try to checkout amazon fresh cart. 
 const checkoutWholefoods = true;
@@ -29,7 +30,12 @@ const checkoutWholefoods = true;
 // Good idea to keep on. Sometimes when you first login you get a capcha. This script will wait while you to
 // solve it and login manually. 
 const DEBUG_WITH_NON_HEADLESS = true;
+const SERVER_PORT = 3000;
+let localAddress = 'http://127.0.0.1:'+SERVER_PORT;
 
+if(AUTO_ORDER_IF_POSSIBLE) {
+  console.log('AUTO_ORDER_IF_POSSIBLE = true !!!!');
+}
 
 puppeteer.use(StealthPlugin());
 
@@ -42,40 +48,51 @@ let browser;
 
 let canMakeOrder = false;
 
-async function testSms() {
-  const msg = {
-    body: `Testing that this works.`,
-    from: TWILIO_FROM,
-    to: YOUR_CELLPHONE
-  }; 
-  try {
+async function smsMsg(body) {
+  for(const cell of SMS_NOTIFY_LIST){
+    const msg = {
+      body,
+      from: TWILIO_FROM,
+      to: cell.trim()
+    }; 
     await client.messages.create(msg);
-  } catch(e) {
-    console.log('error sending SMS.. ', e, msg);
   }
 } 
 
+function getLocalServerUrl(pathname='/') {
+  return localAddress+pathname;
+}
+
+async function testSms(){
+ const screenshotPath = `/screenshots/test_sms_${moment().unix()}.png`;
+  await page.screenshot({path: '.'+screenshotPath});
+  await smsMsg('testing 1,2,3: '+getLocalServerUrl(screenshotPath));
+}
 
 async function sendSMS(offset, wtype, windows) {
-  const msg = {
-    body: `Amazon has "${wtype}" delivery window ${offset} days from now!\n${windows}\n\nhttps://www.amazon.com/gp/buy/shipoptionselect/handlers/display.html`,
-    from: TWILIO_FROM,
-    to: YOUR_CELLPHONE
-  }; 
   try {
-    await client.messages.create(msg);
+    smsMsg(`Amazon has "${wtype}" delivery window ${offset} days from now!\n${windows}\n\nSee: ${getLocalServerUrl()}`);
   } catch(e) {
     console.log('error sending SMS.. ', e, msg);
   }
 }
 
-async function makeOrder() {
+async function chooseDeliveryWindow(timeout=30000) {
+  console.log('clicking on a delivery window');
+  await page.waitForSelector('.ufss-slot.ufss-available', {timeout});
+  await page.click('.ufss-slot.ufss-available');
+  await page.click('.a-button-input');
+  await page.waitForSelector('#continue-top', {timeout});
+  await page.click('#continue-top');
+}
+async function makeOrder(timeout=30000) {
     console.log('trying to make order.. lets see if it works:)');
-    await page.waitForSelector('.ufss-slot.ufss-available', {timeout: 3000});
-    await page.click('.ufss-slot.ufss-available');
-    await page.click('.a-button-input');
-    await page.waitForSelector('#continue-top', {timeout: 3000});
-    await page.click('#continue-top');
+    await page.waitForSelector('.place-your-order-button', {timeout});
+    await page.click('.place-your-order-button');
+    const screenshotPath = `/screenshots/after-order-placed_${moment().unix()}.png`;
+    await page.screenshot({path: '.'+screenshotPath});
+    await smsMsg(`Tried to place an order. See: ${getLocalServerUrl(screenshotPath)}`)
+    return screenshotPath;
 }
 
 async function check() {
@@ -107,14 +124,22 @@ async function check() {
 
     console.log('sending SMS at ', moment().toISOString());
     sendSMS(foundAvailability.i, foundAvailability.msg, texts);
-    canMakeOrder = true;
+    try {
+      await chooseDeliveryWindow();
+      canMakeOrder = true;
+      if(AUTO_ORDER_IF_POSSIBLE) {
+        await makeOrder();
+      }
+    } catch(e) {
+      console.log('error choose delivery window/ordering: ', e);
+    }
     
 
-    console.log('Found delivery windows, waiting 4 hours to check again');
-    await Promise.delay(1000 * 60 * 60 * DELAY_AFTER_FINDING_MINS); // Wait before doing this again.
+    console.log(`Found delivery windows, waiting ${DELAY_AFTER_FINDING_SECONDS} seconds to check again`);
+    await Promise.delay(1000 * DELAY_AFTER_FINDING_SECONDS); // Wait before doing this again.
   } else {
-    console.log(`Looking again in ${REFRESH_INTERVAL_MINS} minutes`);
-    await Promise.delay(1000 * 60 * REFRESH_INTERVAL_MINS); // check again in X minutes.
+    console.log(`Looking again in ${REFRESH_INTERVAL_SECONDS} seconds`);
+    await Promise.delay(1000 * REFRESH_INTERVAL_SECONDS); // check again in X minutes.
   }
 
   const cookies = await page.cookies();
@@ -148,6 +173,8 @@ async function dealWithShit() {
         await page.click('.a-button-input');
       } catch (e) {
       }
+    } else if(title === "Place Your Order - Amazon.com Checkout" && AUTO_ORDER_IF_POSSIBLE) {
+        await makeOrder();
     } else if(title === "Amazon.com Shopping Cart") {
       try { 
         await page.waitForSelector('.a-button-input', {timeout: 6000});
@@ -290,34 +317,60 @@ try {
 }
 
 
+function renderError(res, e) {
+    res.setHeader('content-type', 'text/html');
+    res.send(`<html><head><title>Someone set us up the bomb!</title></head>
+    <body><a href="/">Go back to that other useless page</a><br/>
+    <h1>You have found the error page for the error page!</h1><pre>${e.stack}</pre></body></html>`);
+}
 
 app.get('/', async (req, res) => {
   const encodedImg = await page.screenshot({encoding: 'base64'});
   res.setHeader('content-type', 'text/html');
   res.send(`<html><head><title>Using the blockchain for wholefoods deliveries!</title></head>
     <body>
-    <h1><a href="/order" style="display:${canMakeOrder ? 'block': 'none'}; font-size: 34px; margin-bottom: 10px;">schedule first available window for me!<a><h1>
+    <h1 style="display:${canMakeOrder ? 'block': 'none'};"><a href="/order" style="font-size: 34px; margin-bottom: 10px;">Place this order!<a> (wait up to a 2 minutes after clicking)</h1>
+    <h1><a href="/test-sms" style="font-size: 14px; margin-bottom: 10px;">Send a test SMS<a></h1>
     <img src="data:image/png;base64, ${encodedImg}"></body></html>`);
 });
-app.get('/order', async (req, res) => {
+app.get('/test-sms', async (req, res) => {
   try {
-    await makeOrder();
-    res.redirect('/');
+    await testSms();
+    res.send('it worked!');
   } catch(e) {
-    res.setHeader('content-type', 'text/html');
-    res.send(`<html><head><title>Someone set us up the bomb!</title></head>
-    <body><a href="/">Go back to that other useless page</a><br/>
-    <h1>You have found the error page for the error page!</h1><pre>${e.stack}</pre></body></html>`);
+    renderError(e);
   }
 });
+
+app.get('/order-placed', async (req, res) => { 
+  const encodedImg = await page.screenshot({encoding: 'base64'});
+  res.setHeader('content-type', 'text/html');
+  res.send(`<html><body><h1>I think it worked, go confirm at <a href="https://amazon.com">amazon.com</a></h1>
+    <br/><br/>
+    <img src="data:image/png;base64, ${encodedImg}">
+    </body></html>`);
+});
+
+app.get('/order', async (req, res) => {
+  try {
+    const screenshotPath = await makeOrder();
+    res.redirect('/order-placed');
+  } catch(e) {
+    renderError(e);
+  }
+});
+app.use('/screenshots', express.static('screenshots'));
 
 Object.keys(ifaces).forEach(function (ifname) {
   ifaces[ifname].forEach(function (iface) {
     if ('IPv4' !== iface.family || iface.internal !== false) {
       return;
     }
-    console.log(`Server started on http://${iface.address}:3000/`);
+    localAddress = `http://${iface.address}:${SERVER_PORT}`;
+    console.log(`Server started on ${localAddress}`);
   });
 });
 
-app.listen(process.env.PORT || 3000)
+
+app.listen(SERVER_PORT)
+
