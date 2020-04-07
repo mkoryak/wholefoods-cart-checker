@@ -44,6 +44,11 @@ if(AUTO_ORDER_IF_POSSIBLE) {
   console.log('AUTO_ORDER_IF_POSSIBLE = true !!!!');
 }
 
+const LAST_ORDER_SCREENSHOT_PATH = './screenshots/last-order.png';
+if(fs.existsSync(LAST_ORDER_SCREENSHOT_PATH)) {
+  fs.unlinkSync(LAST_ORDER_SCREENSHOT_PATH);
+}
+
 puppeteer.use(StealthPlugin());
 
 const client = require('twilio')(TWILIO_CLIENT_ID, TWILIO_AUTH_TOKEN);
@@ -97,8 +102,12 @@ async function makeOrder(notify = true, timeout=30000) {
     await page.waitForSelector('.place-your-order-button', {timeout});
     await page.click('.place-your-order-button');
     const screenshotPath = `/screenshots/after-order-placed_${moment().unix()}.png`;
+   
     await page.waitForSelector('.a-color-success'); // text about order in these 2 nodes
     await page.screenshot({path: '.'+screenshotPath, fullPage: true});
+    await page.screenshot({path: LAST_ORDER_SCREENSHOT_PATH, fullPage: true});
+    canMakeOrder = false;
+
     if(notify) {
       await smsMsg(`Tried to place an order. See: ${getLocalServerUrl(screenshotPath)}`)
     }
@@ -194,6 +203,9 @@ async function dealWithShit() {
         await page.click('.a-button-input');
       } catch (e) {
       }
+    } else if(title === 'Amazon.com Thanks You') {
+      console.log('looks like we just placed an order, sleeping for 24 hours.');
+      await Promise.delay(1000 * 60 * 60 * 24); 
     } else if(title === "Place Your Order - Amazon.com Checkout" && AUTO_ORDER_IF_POSSIBLE) {
         await makeOrder();
     } else if(title === "Amazon.com Shopping Cart") {
@@ -377,13 +389,13 @@ app.get('/order-placed', async (req, res) => {
     <br/><br/>
     I see this:
     <br/>
-    <img src="data:image/png;base64, ${encodedImg}">
+    <img src="/screenshots/last-order.png">
     </body></html>`);
 });
 
 app.get('/order', async (req, res) => {
   try {
-    const screenshotPath = await makeOrder(/*notify= */ false);
+     await makeOrder(/*notify= */ false);
     res.redirect('/order-placed');
   } catch(e) {
     renderError(res, e);
