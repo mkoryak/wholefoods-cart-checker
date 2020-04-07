@@ -37,6 +37,9 @@ let localAddress = 'http://127.0.0.1:'+SERVER_PORT;
 // We will find a better url later as we click around. 
 let amazonUrl = 'https://www.amazon.com/gp/cart/view.html?ref_=nav_cart';
 
+let availabilityWindows = [];
+let lastPageLoad = moment();
+
 if(AUTO_ORDER_IF_POSSIBLE) {
   console.log('AUTO_ORDER_IF_POSSIBLE = true !!!!');
 }
@@ -81,7 +84,7 @@ async function sendSMS(offset, wtype, windows) {
   }
 }
 
-async function chooseDeliveryWindow(timeout=30000) {
+async function chooseDeliveryWindow(timeout=40000) {
   console.log('clicking on a delivery window');
   await page.waitForSelector('.ufss-slot.ufss-available', {timeout});
   await page.click('.ufss-slot.ufss-available');
@@ -89,21 +92,27 @@ async function chooseDeliveryWindow(timeout=30000) {
   await page.waitForSelector('#continue-top', {timeout});
   await page.click('#continue-top');
 }
-async function makeOrder(timeout=30000) {
+async function makeOrder(notify = true, timeout=30000) {
     console.log('trying to make order.. lets see if it works:)');
     await page.waitForSelector('.place-your-order-button', {timeout});
     await page.click('.place-your-order-button');
     const screenshotPath = `/screenshots/after-order-placed_${moment().unix()}.png`;
+    await page.waitForSelector('.a-color-success'); // text about order in these 2 nodes
     await page.screenshot({path: '.'+screenshotPath, fullPage: true});
-    await smsMsg(`Tried to place an order. See: ${getLocalServerUrl(screenshotPath)}`)
+    if(notify) {
+      await smsMsg(`Tried to place an order. See: ${getLocalServerUrl(screenshotPath)}`)
+    }
     return screenshotPath;
 }
 
 async function check() {
 
   canMakeOrder = false;
+  availabilityWindows = [];
+  availabilityDate = "Not available";
   let foundAvailability = false;
   let foundNothing = true;;
+  lastPageLoad = moment();
   const texts = await page.$$eval('.ufss-date-select-toggle-text-availability', 
     nodes => nodes.map(n => n.innerText));
 
@@ -121,16 +130,20 @@ async function check() {
     try {
       texts = await page.$$eval('.ufss-slot.ufss-available .ufss-slot-time-window-text', 
             nodes => nodes.map(n => n.innerText));
+      availabilityWindows = texts; 
+      availabilityDate = moment().add(parseInt(foundAvailability.i), 'days').format("dddd, MMMM Do");
       texts = texts.join('\n');
     } catch(e) {
       console.log('something bad when getting available times! ', e);
     }
 
     console.log('sending SMS at ', moment().toISOString());
-    sendSMS(foundAvailability.i, foundAvailability.msg, texts);
+    
     try {
       await chooseDeliveryWindow();
       canMakeOrder = true;
+      sendSMS(foundAvailability.i, foundAvailability.msg, texts);
+      
       if(AUTO_ORDER_IF_POSSIBLE) {
         await makeOrder();
       }
@@ -168,6 +181,7 @@ async function evalButtonText(el) {
 
 async function dealWithShit() {
   await Promise.delay(1000 * 3);
+  lastPageLoad = moment();
   try {
     const title = await page.title();
     console.log('Process page:', title);
@@ -334,13 +348,17 @@ function renderError(res, e) {
 app.get('/', async (req, res) => {
   const encodedImg = await page.screenshot({encoding: 'base64', fullPage: true});
   res.setHeader('content-type', 'text/html');
+  availabilityWindows = [availabilityWindows[0]];
+  const orderLinks = availabilityWindows.map((text, i) => {
+    return `<a href="/order" style="font-size: 34px; margin-bottom: 10px; padding: 0 10px; color: green; display: block;">Place this order at [${text}] on ${availabilityDate}<a>`
+  });
   res.send(`<html><head><title>Using the blockchain for wholefoods deliveries!</title></head>
     <body>
-    <h1 style="display:${canMakeOrder ? 'block': 'none'};"><a href="/order" style="font-size: 34px; margin-bottom: 10px; padding: 0 10px; color: green;">Place this order!<a> (wait up to a 1 minute after clicking)</h1>
+    <h1 style="display:${canMakeOrder ? 'block': 'none'};">${orderLinks} (wait up to a 1 minute after clicking)</h1>
     <h1><a href="/test-sms" style="font-size: 14px; margin-bottom: 10px;">Send a test SMS<a></h1>
     <h1><a href="${amazonUrl}" style="font-size: 24px; margin-bottom: 10px;">Amazon Cart</a></h1>
     <br/>
-    <b>Screenshot</b> of current state:<br/>
+    <b>Screenshot</b> of current page loaded ${moment().diff(lastPageLoad, 'seconds')} seconds ago:<br/>
     <img src="data:image/png;base64, ${encodedImg}"></body></html>`);
 });
 app.get('/test-sms', async (req, res) => {
@@ -357,13 +375,15 @@ app.get('/order-placed', async (req, res) => {
   res.setHeader('content-type', 'text/html');
   res.send(`<html><body><h1>I think it worked, go confirm at <a href="https://amazon.com">amazon.com</a></h1>
     <br/><br/>
+    I see this:
+    <br/>
     <img src="data:image/png;base64, ${encodedImg}">
     </body></html>`);
 });
 
 app.get('/order', async (req, res) => {
   try {
-    const screenshotPath = await makeOrder();
+    const screenshotPath = await makeOrder(/*notify= */ false);
     res.redirect('/order-placed');
   } catch(e) {
     renderError(res, e);
