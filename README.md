@@ -9,15 +9,22 @@ In this folder run
 Then edit config.txt and add all things that are needed.
 - You need to register at twilio and they will give you ~10 bucks free money which is enough for much SMS.
 
-# Using it
+# Using it for the first time
 
-You no longer need to put your amazon credentials into config.txt.
-If you do not, the first time the thing runs it will wait for you to login
-to amazon in chromium. 
+You need to have a wholefoods cart with items ready before you run this thing.
 
-I do not know if there will be another login prompt later when the program is running, but if there is, it will fail if you arent around.
+Edit config.txt and add your twilio credentials and sms sending phone number. 
+You can also put your amazon email/password there. The benefit of doing that is that you dont have to log into amazon when you first start the program. 
+
+If you do not add your amazon credentials into config.txt then you should log in to your amazon account after the app navigates to the login screen and then wait for it to continue doing its thing.
 
 Watch console.log when you first run it and it will tell you to login.
+
+When it thinks that it has successfully placed an order, the program will sleep for a very long time.
+
+# Testing your twilio settings
+
+Start the program, navigate to http://localhost:3000 and click 'send test sms'.
 
 # Checkout your cart faster
 Set `AUTO_ORDER_IF_POSSIBLE` to true in config. It will do it for you.
