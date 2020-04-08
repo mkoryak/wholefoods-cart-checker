@@ -1,8 +1,8 @@
-# Optional: see readme for info.
-AMAZON_PASSWORD=your password goes here  
+# Optional: If you dont add it here you need to login in chromium on startup.
+AMAZON_PASSWORD=  
 
-# Optional: it will use it if its here
-AMAZON_EMAIL=pooper@scooper.com
+# Optional: It will use it if its here
+AMAZON_EMAIL=
 
 # Required: Comma seperated list of phones to notify about a delivery window (ex: +15552221212,+19788771111)
 SMS_NOTIFY_LIST=+19785551212
