@@ -18,3 +18,8 @@ AUTO_ORDER_IF_POSSIBLE=false
 REFRESH_INTERVAL_SECONDS=87
 # How long to wait after finding a window before starting to check again:
 DELAY_AFTER_FINDING_SECONDS=600
+
+# Wat are you trying to do? options are: wholefoods, fresh, tp
+WAT=tp
+
+TP_URLS=https://www.amazon.com/gp/product/B07SNGLZPQ,https://www.amazon.com/gp/product/B07CB5X7RF

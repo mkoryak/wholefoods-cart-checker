@@ -15,6 +15,8 @@ require('dotenv').config({path: path.resolve(process.cwd(), 'config.txt')});
 // If these are null, you have to login manually. watch console.log
 const AMAZON_PASSWORD = process.env.AMAZON_PASSWORD;
 const AMAZON_EMAIL = process.env.AMAZON_EMAIL;
+const WAT = (process.env.WAT || 'wholefoods').trim();
+const TP_URLS = process.env.TP_URLS;
 const TWILIO_CLIENT_ID = process.env.TWILIO_CLIENT_ID;
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 const TWILIO_FROM = process.env.TWILIO_FROM;
@@ -24,8 +26,11 @@ const REFRESH_INTERVAL_SECONDS = parseInt(process.env.REFRESH_INTERVAL_SECONDS);
 const DELAY_AFTER_FINDING_SECONDS = parseInt(
     process.env.DELAY_AFTER_FINDING_SECONDS); // Dont spam with sms after finding a window.
 
-// If false, will try to checkout amazon fresh cart. 
-const checkoutWholefoods = true;
+const urls = WAT === 'tp' ? TP_URLS.split(',').map(s => s.trim()) :
+    ['https://www.amazon.com/gp/cart/view.html?ref_=nav_cart'];
+
+// If false, will try to checkout amazon fresh cart.
+const checkoutWholefoods = WAT === 'wholefoods';
 
 // Good idea to keep on. Sometimes when you first login you get a capcha. This script will wait while you to
 // solve it and login manually. 
@@ -193,6 +198,48 @@ async function evalButtonText(el) {
   });
 }
 
+async function farmTP() {
+  lastPageLoad = moment();
+  const tpTitle = await page.title();
+  try {
+    await page.waitForSelector('#buy-now-button');
+    await page.click('#buy-now-button');
+    await page.waitForSelector('#turbo-checkout-pyo-button', {timeout: 60000});
+    await page.click('#turbo-checkout-pyo-button');
+    await smsMsg('I just bought some TP! ' + getLocalServerUrl());
+    await Promise.delay(1000 * 60 * 60 * 24);
+  } catch (e) {
+    const title = await page.title();
+    if (title !== tpTitle) {
+      console.log('got redirected somewhere! TP was probably out of stock!');
+      return;
+    }
+    await page.waitForSelector('#availability');
+    const makeSure = await page.$('#availability');
+    const text = await makeSure.evaluate((node) => {
+      return node.innerText;
+    });
+    if (text.match(/unavailable/i) || text.match(/available from these sellers/i)) {
+      console.log(
+          `NO TP FOR YOU! waiting ${REFRESH_INTERVAL_SECONDS} seconds`);
+      await Promise.delay(1000 * REFRESH_INTERVAL_SECONDS); // Wait before doing this again.
+    } else {
+      console.log('something went wrong with TP ordering, unexpected text:', text);
+      const title = await page.title();
+      if (title !== tpTitle) {
+        console.log('got redirected somewhere! TP was probably out of stock!');
+        return;
+      }
+      await Promise.delay(1000 * 60 * 60 * 24);
+    }
+    if(urls.length === 1) {
+      await page.reload({
+        waitUntil: "domcontentloaded"
+      });
+    }
+  }
+}
+
 async function dealWithShit() {
   await Promise.delay(1000 * 3);
   lastPageLoad = moment();
@@ -216,6 +263,7 @@ async function dealWithShit() {
         && AUTO_ORDER_IF_POSSIBLE) {
       await makeOrder();
     } else if (title === "Amazon.com Shopping Cart") {
+
       try {
         await page.waitForSelector('.a-button-input', {timeout: 6000});
         const buttons = await page.$$('.a-button-input');
@@ -236,7 +284,8 @@ async function dealWithShit() {
         const index = checkoutWholefoods ? wholefoodsIndex : freshIndex;
         if (index === -1) {
           console.log(
-              'Cannot checkout a cart you dont have! Prepare for error');
+              'Cannot checkout a cart you dont have! Exiting');
+          process.exit(-1);
         }
         console.log(`>>> Monitoring ${checkoutWholefoods ? 'whole foods'
             : 'amazon fresh'} cart at index: ${index}`);
@@ -245,28 +294,21 @@ async function dealWithShit() {
         await page.waitForSelector('a[name="proceedToCheckout"]');
         await page.click('a[name="proceedToCheckout"]');
       } catch (e) {
-        console.log('looks like we are not logged in...');
-        try {
-          const button = await page.$('.action-button');
-          await page.click('.action-button');
-        } catch (e) {
-          console.log(
-              'cannot find a checkout/login button anywhere. You have nothing in your cart and I am leaving.');
-          process.exit(0);
-        }
+        console.log('looks like we are not logged in...', e);
       }
     } else if (title === "Your Amazon.com") {
       console.log('Saving your cookies to ./cookies.json');
       const cookies = await page.cookies();
       fs.writeFileSync('./cookies.json', JSON.stringify(cookies, null, 2));
-      await page.goto('https://www.amazon.com/gp/cart/view.html?ref_=nav_cart',
-          {
-            waitUntil: "domcontentloaded"
-          });
+
+      await page.goto(urls[0], {
+        waitUntil: "domcontentloaded"
+      });
+
     } else if (title === "Amazon Password Assistance") {
       console.log(
           'you are on Amazon Password Assistance page! Lets get out of here!');
-      await page.goto('https://www.amazon.com/gp/cart/view.html?ref_=nav_cart',
+      await page.goto(urls[0],
           {
             waitUntil: "domcontentloaded"
           });
@@ -287,7 +329,6 @@ async function dealWithShit() {
           await page.focus('#ap_email');
           await Promise.delay(1000 * 60 * 1);
         }
-
       } catch (e) {
         try {
           await page.waitForSelector('#image-captcha-section', {timeout: 1000});
@@ -311,13 +352,16 @@ async function dealWithShit() {
     } else if (title === "Preparing your order") {
       await Promise.delay(1000 * 3); // nothing happens on this page... 
     } else {
-      console.log(
-          'I dont know what to do on this page, hanging out here for a long time');
-      await Promise.delay(1000 * 60 * 60 * 12);
-      //    console.log('I dont know what to do on this page, going back to cart selection.');
-      //    await page.goto('https://www.amazon.com/gp/cart/view.html?ref_=nav_cart', {
-      //      waitUntil: "domcontentloaded"
-      //    });
+      if (title.startsWith('Amazon.com: ') && title.match(/toilet paper/i)) {
+        console.log('We are farming TP today!');
+        await farmTP();
+      } else {
+
+        console.log('I dont know what to do on this page, somewhere good..');
+        await page.goto(urls[0], {
+          waitUntil: "domcontentloaded"
+        });
+      }
     }
     consequitiveErrorCount = 0;
   } catch (e) {
@@ -338,7 +382,7 @@ async function setup() {
 
   if (fs.existsSync('./cookies.json')) {
     const cookies = JSON.parse(fs.readFileSync('./cookies.json'));
-    console.log('mmmm we found some cookies, eating them!');
+    console.log('We found some cookies, eating them!  YUM');
     await page.setCookie(...cookies);
   }
 
@@ -347,13 +391,28 @@ async function setup() {
     height: 1050
   });
 
-  await page.goto('https://www.amazon.com/gp/cart/view.html?ref_=nav_cart', {
+  await page.goto(urls[0], {
     waitUntil: "domcontentloaded"
   });
 
+  const userEl = await page.$('#nav-link-accountList .nav-line-1');
+  const text = await userEl.evaluate((el) => el.innerText.trim());
+  if (text === "Hello, Sign in") {
+    console.log('you need to login!');
+    await page.goto(
+        'https://www.amazon.com/ap/signin?openid.pape.max_auth_age=0&openid.return_to=https%3A%2F%2Fwww.amazon.com%2Fs%3Fk%3Dlogin%26ref_%3Dnav_signin&openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.assoc_handle=usflex&openid.mode=checkid_setup&openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0&');
+  }
+
   let breakingTermsOfService = true;
+  let i = 0;
   do {
     const thing = await dealWithShit(page, browser);
+    i++;
+    if (urls.length > 1) {
+      await page.goto(urls[i % urls.length], {
+        waitUntil: "domcontentloaded"
+      });
+    }
     if (thing === BADNESS) {
       breakingTermsOfService = false;
       await browser.close();
