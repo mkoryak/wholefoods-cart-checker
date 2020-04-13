@@ -15,11 +15,14 @@ TWILIO_FROM=+12029523936
 # Just go ahead and place an order if there is a delivery window:
 AUTO_ORDER_IF_POSSIBLE=false
 # How often to refresh the page with delivery windows:
-REFRESH_INTERVAL_SECONDS=87
+REFRESH_INTERVAL_SECONDS=64
 # How long to wait after finding a window before starting to check again:
 DELAY_AFTER_FINDING_SECONDS=600
 
 # Wat are you trying to do? options are: wholefoods, fresh, tp
 WAT=tp
 
-TP_URLS=https://www.amazon.com/gp/product/B07SNGLZPQ,https://www.amazon.com/gp/product/B07CB5X7RF
+TP_URLS=https://www.amazon.com/gp/product/B00DOSAMVW
+#,https://www.amazon.com/gp/product/B07SPY4HM8
+#,https://www.amazon.com/gp/product/B07CB5X7RF
+#,https://www.amazon.com/gp/product/B07SNGLZPQ

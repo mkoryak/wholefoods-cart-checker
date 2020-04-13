@@ -201,14 +201,32 @@ async function evalButtonText(el) {
 async function farmTP() {
   lastPageLoad = moment();
   const tpTitle = await page.title();
+  const tryIt = async () => {
+    await page.waitForSelector('#turbo-checkout-pyo-button', {timeout: 60000});
+    await page.click('#turbo-checkout-pyo-button');
+    await page.screenshot({path: './screenshots-ordering-tp-2_'+moment().utc()+'.png', fullPage: true});
+    await page.screenshot({path: LAST_ORDER_SCREENSHOT_PATH, fullPage: true});
+    await smsMsg('I just bought some TP! ' + getLocalServerUrl('/order-placed/'));
+    await makeOrder();
+    await Promise.delay(1000 * 60 * 60 * 24);
+  };
   try {
     await page.waitForSelector('#buy-now-button');
     await page.click('#buy-now-button');
-    await page.waitForSelector('#turbo-checkout-pyo-button', {timeout: 60000});
-    await page.click('#turbo-checkout-pyo-button');
-    await smsMsg('I just bought some TP! ' + getLocalServerUrl());
-    await Promise.delay(1000 * 60 * 60 * 24);
+    await page.screenshot({path: './screenshots-ordering-tp-1_'+moment().utc()+'.png', fullPage: true});
+    try {
+      await tryIt();
+    } catch(e) {
+      console.log('badness when ordering TP, but will retry', e);
+      try {
+        await tryIt();
+      }  catch(e) {
+        console.log('ordering TP is not happening :p', e);
+      }
+    }
+    await Promise.delay(1000 * 60 * 60 * 1);
   } catch (e) {
+    //console.log('error in outer try/catch in tp ordering:', e);
     const title = await page.title();
     if (title !== tpTitle) {
       console.log('got redirected somewhere! TP was probably out of stock!');
@@ -219,7 +237,7 @@ async function farmTP() {
     const text = await makeSure.evaluate((node) => {
       return node.innerText;
     });
-    if (text.match(/unavailable/i) || text.match(/available from these sellers/i)) {
+    if (text.match(/unavailable/i) || text.match(/available from these sellers/i) || text.match(/in stock on/i)) {
       console.log(
           `NO TP FOR YOU! waiting ${REFRESH_INTERVAL_SECONDS} seconds`);
       await Promise.delay(1000 * REFRESH_INTERVAL_SECONDS); // Wait before doing this again.
@@ -367,7 +385,7 @@ async function dealWithShit() {
   } catch (e) {
     consequitiveErrorCount++;
     console.log('error while processing page:\n', e);
-    if (consequitiveErrorCount > 40) {
+    if (consequitiveErrorCount > 40 || (e+"").match(/Session closed/ig)) {
       consequitiveErrorCount = 0;
       return BADNESS;
     }
@@ -403,26 +421,31 @@ async function setup() {
         'https://www.amazon.com/ap/signin?openid.pape.max_auth_age=0&openid.return_to=https%3A%2F%2Fwww.amazon.com%2Fs%3Fk%3Dlogin%26ref_%3Dnav_signin&openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.assoc_handle=usflex&openid.mode=checkid_setup&openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0&');
   }
 
-  let breakingTermsOfService = true;
+  let running = true;
   let i = 0;
   do {
-    const thing = await dealWithShit(page, browser);
+    let thing = await dealWithShit(page, browser);
+
     i++;
     if (urls.length > 1) {
-      await page.goto(urls[i % urls.length], {
-        waitUntil: "domcontentloaded"
-      });
+      try {
+        await page.goto(urls[i % urls.length], {
+          waitUntil: "domcontentloaded"
+        });
+      } catch(e) {
+        thing = BADNESS;
+      }
     }
     if (thing === BADNESS) {
-      breakingTermsOfService = false;
+      running = false;
       await browser.close();
-      console.log('I saw a lot of errors, starting everything over!');
-      await Promise.delay(1000 * 60 * 10);
+      console.log('I saw some errors, starting everything over!');
+      await Promise.delay(1000 * 60 * 3);
       setImmidiate(() => {
         setup();
       })
     }
-  } while (breakingTermsOfService);
+  } while (running);
 }
 
 try {
@@ -466,7 +489,6 @@ app.get('/test-sms', async (req, res) => {
 });
 
 app.get('/order-placed', async (req, res) => {
-  const encodedImg = await page.screenshot({encoding: 'base64'});
   res.setHeader('content-type', 'text/html');
   res.send(`<html><body><h1>I think it worked, go confirm at <a href="https://amazon.com">amazon.com</a></h1>
     <br/><br/>
