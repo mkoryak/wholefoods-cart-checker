@@ -20,7 +20,7 @@ const TP_URLS = process.env.TP_URLS;
 const TWILIO_CLIENT_ID = process.env.TWILIO_CLIENT_ID;
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 const TWILIO_FROM = process.env.TWILIO_FROM;
-const AUTO_ORDER_IF_POSSIBLE = process.env.AUTO_ORDER_IF_POSSIBLE == true;
+const AUTO_ORDER_IF_POSSIBLE = process.env.AUTO_ORDER_IF_POSSIBLE == 'true';
 const SMS_NOTIFY_LIST = process.env.SMS_NOTIFY_LIST.split(',');
 const REFRESH_INTERVAL_SECONDS = parseInt(process.env.REFRESH_INTERVAL_SECONDS);
 const DELAY_AFTER_FINDING_SECONDS = parseInt(
@@ -44,6 +44,7 @@ let amazonUrl = 'https://www.amazon.com/gp/cart/view.html?ref_=nav_cart';
 
 let availabilityWindows = [];
 let lastPageLoad = moment();
+let availabilityDate = 'Not available';
 
 if (AUTO_ORDER_IF_POSSIBLE) {
   console.log('AUTO_ORDER_IF_POSSIBLE = true !!!!');
@@ -129,7 +130,7 @@ async function check() {
   availabilityDate = "Not available";
   let foundAvailability = false;
   let foundNothing = true;
-  ;
+
   lastPageLoad = moment();
   const texts = await page.$$eval('.ufss-date-select-toggle-text-availability',
       nodes => nodes.map(n => n.innerText));
@@ -138,7 +139,7 @@ async function check() {
     foundNothing = false;
     console.log(`availability is:`, text, i);
     if (text.trim() !== 'Not available') {
-      foundAvailability = {i, msg: text};
+      foundAvailability = {i, msg: text || 'Available'};
     }
   });
 
@@ -155,7 +156,7 @@ async function check() {
     } catch (e) {
       console.log('something bad when getting available times! ', e);
     }
-
+    await page.screenshot({path: './screenshots/found-window-'+moment().utc()+'.png'});
     console.log('sending SMS at ', moment().toISOString());
 
     try {
@@ -441,7 +442,7 @@ async function setup() {
       await browser.close();
       console.log('I saw some errors, starting everything over!');
       await Promise.delay(1000 * 60 * 3);
-      setImmidiate(() => {
+      setImmediate(() => {
         setup();
       })
     }
