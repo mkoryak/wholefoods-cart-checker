@@ -101,17 +101,23 @@ async function chooseDeliveryWindow(timeout = 40000) {
   await page.waitForSelector('.ufss-slot.ufss-available', {timeout});
   await page.click('.ufss-slot.ufss-available');
   await page.click('.a-button-input');
-  await page.waitForSelector('#continue-top', {timeout});
-  await page.click('#continue-top');
+  try {
+    await page.waitForSelector('#continue-top', {timeout});
+    await page.click('#continue-top');
+  } catch(e) {
+    console.log('couldnt wait, but that might be ok still', e);
+  }
 }
 
 async function makeOrder(notify = true, timeout = 30000) {
   console.log('trying to make order.. lets see if it works:)');
-  await page.waitForSelector('.place-your-order-button', {timeout});
-  await page.click('.place-your-order-button');
+  await page.waitForSelector('#placeYourOrder', {timeout});
+  await page.click('#placeYourOrder');
   const screenshotPath = `/screenshots/after-order-placed_${moment().unix()}.png`;
 
   await page.waitForSelector('.a-color-success'); // text about order in these 2 nodes
+  // wait a while for all loading things to settle.
+  await Promise.delay(1000 * 15);
   await page.screenshot({path: '.' + screenshotPath, fullPage: true});
   await page.screenshot({path: LAST_ORDER_SCREENSHOT_PATH, fullPage: true});
   canMakeOrder = false;
@@ -120,7 +126,6 @@ async function makeOrder(notify = true, timeout = 30000) {
     await smsMsg(
         `Tried to place an order. See: ${getLocalServerUrl(screenshotPath)}`)
   }
-  return screenshotPath;
 }
 
 async function check() {
